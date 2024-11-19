@@ -1,30 +1,29 @@
 from flask import Flask, request, jsonify
-from tensorflow.keras.models import load_model
-import numpy as np
-from PIL import Image
-import io
+import easyocr
 
-# โหลดโมเดล
-model = load_model('mnist_cnn_model.h5')
-
-# สร้าง Flask App
 app = Flask(__name__)
+reader = easyocr.Reader(['en', 'th'])
 
-@app.route('/api/predict', methods=['POST'])
+@app.route('/api/easy-ocr', methods=['POST'])
 def predict():
-    # รับไฟล์ภาพจากผู้ใช้งาน
-    file = request.files['image']
-    image = Image.open(io.BytesIO(file.read())).convert('L').resize((28, 28))  # แปลงเป็น Grayscale และปรับขนาด
-    image_array = np.array(image) / 255.0  # Normalize
-    image_array = image_array.reshape(1, 28, 28, 1)  # Reshape ให้เข้ากับโมเดล
+    if 'image' not in request.files:
+        return jsonify({"error": "Require field image in request"}), 400
 
-    predicted_probabilities = model.predict(image_array)
-    predicted_class = int(np.argmax(predicted_probabilities))
+    image_file = request.files['image']
+    if image_file.filename == '':
+        return jsonify({"error": "File not found"}), 400
 
-    return jsonify({
-        "predicted_class": predicted_class,
-        "probabilities": predicted_probabilities.tolist()
-    })
+    try:
+        results = reader.readtext(image_file.read(), detail=0)
+        lines = [{"line": idx + 1, "text": line}
+                 for idx, line in enumerate(results)]
+
+        return jsonify({
+            "lines": lines
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True)
